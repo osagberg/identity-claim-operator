@@ -1,0 +1,14 @@
+apiVersion: identity.cluster.local/v1alpha1
+kind: IdentityClaim
+metadata:
+  labels:
+    app.kubernetes.io/name: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: my-app-identity
+spec:
+  # Select pods with app=my-app label to receive this identity
+  selector:
+    matchLabels:
+      app: my-app
+  # Certificate valid for 1 hour (default)
+  ttl: 1h

@@ -1,0 +1,51 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+.kube/
+
+# Secrets - NEVER commit these
+*.pem
+*.key
+*.crt
+secrets/
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+dist/
+cover.out
+coverage.html
+
+# Temporary files
+tmp/
+temp/
