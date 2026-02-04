@@ -16,15 +16,28 @@ The Identity Claim Operator provides a Kubernetes-native approach to managing wo
 
 ## Quick Start
 
+### Option 1: Helm (Recommended)
+
+```bash
+helm install identity-claim-operator ./charts/identity-claim-operator \
+  --namespace identity-system --create-namespace
+```
+
+### Option 2: Kustomize
+
 ```bash
 # Install CRDs
 make install
 
-# Run the operator locally
-make run
+# Deploy operator
+make deploy IMG=ghcr.io/osagberg/identity-claim-operator:latest
+```
 
-# Or deploy to cluster
-make deploy IMG=<your-registry>/identity-claim-operator:tag
+### Option 3: Local Development
+
+```bash
+make install  # Install CRDs
+make run      # Run operator locally
 ```
 
 ## Example
@@ -47,7 +60,7 @@ After applying, check the status:
 ```bash
 kubectl get identityclaims
 
-NAME                  PHASE   SPIFFE ID                                              SECRET                        AGE
+NAME                  PHASE   SPIFFE ID                                                  SECRET                         AGE
 my-service-identity   Ready   spiffe://cluster.local/ns/default/ic/my-service-identity   my-service-identity-identity   1m
 ```
 
@@ -60,23 +73,45 @@ my-service-identity   Ready   spiffe://cluster.local/ns/default/ic/my-service-id
 5. cert-manager issues the certificate and stores it in a `Secret`
 6. Pods can mount the Secret for mTLS authentication
 
+## CRD Reference
+
+### IdentityClaimSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `selector` | `LabelSelector` | Yes | Pods matching these labels receive the identity |
+| `ttl` | `Duration` | No | Certificate validity period (default: `1h`) |
+
+### IdentityClaimStatus
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `phase` | `string` | Current phase: `Pending`, `Issuing`, `Ready`, `Failed` |
+| `spiffeId` | `string` | Assigned SPIFFE URI |
+| `secretName` | `string` | Name of Secret containing TLS certificate |
+| `expiresAt` | `Time` | Certificate expiration timestamp |
+| `conditions` | `[]Condition` | Standard Kubernetes conditions |
+
+### Status Conditions
+
+| Type | Description |
+|------|-------------|
+| `Ready` | Overall health of the identity claim |
+| `CertificateIssued` | Certificate has been issued by cert-manager |
+| `PodsVerified` | Matching pods were found for the selector |
+
 ## Prerequisites
 
-- Kubernetes 1.28+
+- Kubernetes 1.26+
 - cert-manager installed with a configured `ClusterIssuer` named `selfsigned-issuer`
 
 ## Development
 
 ```bash
-# Generate code and manifests
-make generate
-make manifests
-
-# Run tests
-make test
-
-# Build container image
-make docker-build IMG=<your-registry>/identity-claim-operator:tag
+make generate   # Generate code (DeepCopy methods)
+make manifests  # Generate CRD and RBAC manifests
+make test       # Run unit tests
+make lint       # Run linter
 ```
 
 ## License

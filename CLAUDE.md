@@ -11,24 +11,6 @@ Do NOT commit:
 - Cluster-specific configurations
 - Anything you wouldn't want public
 
-## Project Structure (after kubebuilder scaffold)
-
-```
-operator/
-├── api/v1alpha1/           # CRD type definitions
-│   └── identityclaim_types.go
-├── controllers/            # Reconciliation logic
-│   └── identityclaim_controller.go
-├── config/
-│   ├── crd/               # Generated CRD manifests
-│   ├── rbac/              # RBAC for operator
-│   ├── manager/           # Deployment manifests
-│   └── samples/           # Example CRs
-├── Dockerfile
-├── Makefile
-└── go.mod
-```
-
 ## Quick Commands
 
 ```bash
@@ -43,10 +25,32 @@ make run
 make test
 
 # Build container
-make docker-build IMG=<registry>/identity-claim-operator:tag
+make docker-build IMG=ghcr.io/osagberg/identity-claim-operator:tag
 
-# Deploy to cluster
-make deploy IMG=<registry>/identity-claim-operator:tag
+# Deploy via Helm
+helm install identity-claim-operator ./charts/identity-claim-operator \
+  --namespace identity-system --create-namespace
+```
+
+## Project Structure
+
+```
+.
+├── api/v1alpha1/           # CRD type definitions
+│   └── identityclaim_types.go
+├── internal/controller/    # Reconciliation logic
+│   └── identityclaim_controller.go
+├── charts/                 # Helm chart
+│   └── identity-claim-operator/
+├── config/
+│   ├── crd/               # Generated CRD manifests
+│   ├── rbac/              # RBAC for operator
+│   ├── manager/           # Deployment manifests
+│   └── samples/           # Example CRs
+├── cmd/main.go            # Entry point
+├── Dockerfile
+├── Makefile
+└── go.mod
 ```
 
 ## Code Style
@@ -64,7 +68,7 @@ func (r *IdentityClaimReconciler) Reconcile(ctx context.Context, req ctrl.Reques
     // 1. Fetch the IdentityClaim
     // 2. Check if being deleted (handle finalizers)
     // 3. Validate spec
-    // 4. Create/update dependent resources (secrets, certs)
+    // 4. Create/update dependent resources (Certificate CR)
     // 5. Update status with conditions
     // 6. Return (requeue if needed)
 }
@@ -75,10 +79,19 @@ func (r *IdentityClaimReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 Always set status conditions:
 - `Ready` - Overall health
 - `CertificateIssued` - Certificate status
-- `Verified` - Identity verification status
+- `PodsVerified` - Matching pods found
 
 ## Testing
 
 - Unit tests: `*_test.go` files alongside code
-- Integration tests: `controllers/suite_test.go` (envtest)
-- E2E tests: Require running cluster
+- Integration tests: `internal/controller/suite_test.go` (envtest)
+- E2E tests: `test/e2e/` (requires running cluster)
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/v1alpha1/identityclaim_types.go` | CRD schema definition |
+| `internal/controller/identityclaim_controller.go` | Main reconciliation logic |
+| `charts/identity-claim-operator/values.yaml` | Helm configuration |
+| `config/samples/identity_v1alpha1_identityclaim.yaml` | Example CR |
