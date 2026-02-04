@@ -1,0 +1,146 @@
+# Default values for identity-claim-operator.
+# This is a YAML-formatted file.
+
+# -- Number of replicas for the operator deployment
+replicaCount: 1
+
+image:
+  # -- Container image repository
+  repository: ghcr.io/osagberg/identity-claim-operator
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Overrides the image tag whose default is the chart appVersion
+  tag: ""
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the name of the chart
+nameOverride: ""
+
+# -- Override the full name of the chart
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: true
+  # -- Annotations to add to the service account
+  annotations: {}
+  # -- The name of the service account to use
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# -- Annotations to add to the deployment
+podAnnotations: {}
+
+# -- Labels to add to the deployment
+podLabels: {}
+
+# -- Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+# -- Node selector for pod assignment
+nodeSelector: {}
+
+# -- Tolerations for pod assignment
+tolerations: []
+
+# -- Affinity for pod assignment
+affinity: {}
+
+# Leader election configuration
+leaderElection:
+  # -- Enable leader election for controller manager
+  enabled: true
+
+# Health probes configuration
+healthProbes:
+  # -- Port for health probes
+  port: 8081
+  livenessProbe:
+    # -- Initial delay seconds for liveness probe
+    initialDelaySeconds: 15
+    # -- Period seconds for liveness probe
+    periodSeconds: 20
+  readinessProbe:
+    # -- Initial delay seconds for readiness probe
+    initialDelaySeconds: 5
+    # -- Period seconds for readiness probe
+    periodSeconds: 10
+
+# Metrics configuration
+metrics:
+  # -- Enable metrics service
+  enabled: true
+  # -- Metrics service port
+  port: 8443
+  service:
+    # -- Metrics service type
+    type: ClusterIP
+    # -- Annotations for metrics service
+    annotations: {}
+
+# ServiceMonitor configuration for Prometheus Operator
+serviceMonitor:
+  # -- Enable ServiceMonitor creation
+  enabled: false
+  # -- Namespace for ServiceMonitor (defaults to release namespace)
+  namespace: ""
+  # -- Labels for ServiceMonitor
+  labels: {}
+  # -- Interval for metrics scraping
+  interval: 30s
+  # -- Scrape timeout
+  scrapeTimeout: 10s
+
+# -- Additional arguments to pass to the manager
+extraArgs: []
+
+# -- Additional environment variables
+extraEnv: []
+
+# -- Additional volumes
+extraVolumes: []
+
+# -- Additional volume mounts
+extraVolumeMounts: []
+
+# -- Priority class name for the pod
+priorityClassName: ""
+
+# -- Termination grace period in seconds
+terminationGracePeriodSeconds: 10
+
+# Network policy configuration
+networkPolicy:
+  # -- Enable network policy
+  enabled: false
+
+# Pod disruption budget configuration
+podDisruptionBudget:
+  # -- Enable pod disruption budget
+  enabled: false
+  # -- Minimum available pods
+  minAvailable: 1
+  # -- Maximum unavailable pods (takes precedence over minAvailable)
+  maxUnavailable: ""

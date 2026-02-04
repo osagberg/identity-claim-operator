@@ -1,0 +1,20 @@
+apiVersion: v2
+name: identity-claim-operator
+description: A Kubernetes operator for managing SPIFFE-based workload identity claims
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.26.0-0"
+keywords:
+  - kubernetes
+  - operator
+  - identity
+  - spiffe
+  - mtls
+  - cert-manager
+home: https://github.com/osagberg/identity-claim-operator
+sources:
+  - https://github.com/osagberg/identity-claim-operator
+maintainers:
+  - name: osagberg
+    url: https://github.com/osagberg
