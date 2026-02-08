@@ -98,7 +98,14 @@ func (r *IdentityClaimReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
+	if podsFound == 0 {
+		r.setCondition(claim, identityv1alpha1.ConditionPodsVerified, metav1.ConditionFalse, "NoPods",
+			"No pods matching selector found")
+		if err := r.Status().Update(ctx, claim); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
 	r.setCondition(claim, identityv1alpha1.ConditionPodsVerified, metav1.ConditionTrue, "PodsFound",
 		fmt.Sprintf("Found %d matching pod(s)", podsFound))
 

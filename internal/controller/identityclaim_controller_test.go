@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -79,6 +80,74 @@ var _ = Describe("IdentityClaim Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When no pods match the selector", func() {
+		const resourceName = "no-pods-claim"
+		ctx := context.Background()
+		nn := types.NamespacedName{Name: resourceName, Namespace: "default"}
+
+		BeforeEach(func() {
+			resource := &identityv1alpha1.IdentityClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: identityv1alpha1.IdentityClaimSpec{
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "nonexistent-app-that-will-never-match",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &identityv1alpha1.IdentityClaim{}
+			if err := k8sClient.Get(ctx, nn, resource); err == nil {
+				// Remove finalizer first so delete can proceed
+				resource.Finalizers = nil
+				_ = k8sClient.Update(ctx, resource)
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should not issue certificate when no pods match selector", func() {
+			controllerReconciler := &IdentityClaimReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			// First reconcile adds the finalizer
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Second reconcile initializes status
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Third reconcile should hit the zero-pod guard
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(30*time.Second), "should requeue after 30s when no pods found")
+
+			// Verify the PodsVerified condition
+			claim := &identityv1alpha1.IdentityClaim{}
+			Expect(k8sClient.Get(ctx, nn, claim)).To(Succeed())
+
+			var podsVerifiedFound bool
+			for _, cond := range claim.Status.Conditions {
+				if cond.Type == identityv1alpha1.ConditionPodsVerified {
+					podsVerifiedFound = true
+					Expect(cond.Status).To(Equal(metav1.ConditionFalse), "PodsVerified should be False")
+					Expect(cond.Reason).To(Equal("NoPods"), "reason should be NoPods")
+					Expect(cond.Message).To(ContainSubstring("No pods matching selector found"))
+				}
+			}
+			Expect(podsVerifiedFound).To(BeTrue(), "PodsVerified condition should be set")
 		})
 	})
 })
