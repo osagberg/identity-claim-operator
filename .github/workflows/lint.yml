@@ -2,7 +2,13 @@ name: Lint
 
 on:
   push:
+    branches: [main]
+    tags-ignore: ['v*']
   pull_request:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
@@ -16,8 +22,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Run linter
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.7.2
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+      - run: helm lint charts/identity-claim-operator/
+      - run: helm template test charts/identity-claim-operator/
