@@ -134,7 +134,7 @@ terminationGracePeriodSeconds: 10
 # Network policy configuration
 networkPolicy:
   # -- Enable network policy
-  enabled: false
+  enabled: true
 
 # Pod disruption budget configuration
 podDisruptionBudget:

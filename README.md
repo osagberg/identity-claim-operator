@@ -53,6 +53,10 @@ spec:
     matchLabels:
       app: my-service
   ttl: 1h
+  # Optional: override the default issuer
+  # issuerRef:
+  #   name: letsencrypt-prod
+  #   kind: ClusterIssuer
 ```
 
 After applying, check the status:
@@ -80,7 +84,16 @@ my-service-identity   Ready   spiffe://cluster.local/ns/default/ic/my-service-id
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `selector` | `LabelSelector` | Yes | Pods matching these labels receive the identity |
-| `ttl` | `Duration` | No | Certificate validity period (default: `1h`) |
+| `ttl` | `Duration` | No | Certificate validity period (default: `1h`, min: `5m`, max: `8760h`) |
+| `issuerRef` | `IssuerReference` | No | Override the default cert-manager issuer |
+
+#### IssuerReference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `string` | -- | Name of the issuer resource |
+| `kind` | `string` | `ClusterIssuer` | Kind of the issuer (`Issuer` or `ClusterIssuer`) |
+| `group` | `string` | `cert-manager.io` | API group of the issuer |
 
 ### IdentityClaimStatus
 
@@ -100,10 +113,19 @@ my-service-identity   Ready   spiffe://cluster.local/ns/default/ic/my-service-id
 | `CertificateIssued` | Certificate has been issued by cert-manager |
 | `PodsVerified` | Matching pods were found for the selector |
 
+## Operator Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--default-issuer-name` | `selfsigned-issuer` | Default cert-manager issuer name |
+| `--default-issuer-kind` | `ClusterIssuer` | Default cert-manager issuer kind |
+
+These defaults are used when `spec.issuerRef` is not set on the IdentityClaim.
+
 ## Prerequisites
 
 - Kubernetes 1.26+
-- cert-manager installed with a configured `ClusterIssuer` named `selfsigned-issuer`
+- cert-manager installed with a configured issuer (default: `ClusterIssuer` named `selfsigned-issuer`)
 
 ## Development
 

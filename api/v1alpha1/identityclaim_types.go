@@ -20,6 +20,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// IssuerReference identifies a cert-manager issuer.
+type IssuerReference struct {
+	// name of the issuer resource.
+	// +required
+	Name string `json:"name"`
+	// kind of the issuer (Issuer or ClusterIssuer).
+	// +optional
+	// +kubebuilder:default="ClusterIssuer"
+	Kind string `json:"kind,omitempty"`
+	// group of the issuer.
+	// +optional
+	// +kubebuilder:default="cert-manager.io"
+	Group string `json:"group,omitempty"`
+}
+
 // IdentityClaimSpec defines the desired state of IdentityClaim
 type IdentityClaimSpec struct {
 	// selector specifies which pods should receive the identity.
@@ -28,10 +43,16 @@ type IdentityClaimSpec struct {
 	Selector metav1.LabelSelector `json:"selector"`
 
 	// ttl specifies how long the certificate should be valid.
-	// Defaults to 1h if not specified.
+	// Defaults to 1h if not specified. Must be between 5m and 8760h.
 	// +optional
 	// +kubebuilder:default="1h"
+	// +kubebuilder:validation:Format=duration
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('5m') && duration(self) <= duration('8760h')",message="TTL must be between 5m and 8760h"
 	TTL metav1.Duration `json:"ttl,omitempty"`
+
+	// issuerRef overrides the default certificate issuer.
+	// +optional
+	IssuerRef *IssuerReference `json:"issuerRef,omitempty"`
 }
 
 // IdentityClaimPhase represents the current phase of the IdentityClaim

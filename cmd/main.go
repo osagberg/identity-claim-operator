@@ -79,6 +79,12 @@ func main() {
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
+	var defaultIssuerName string
+	var defaultIssuerKind string
+	flag.StringVar(&defaultIssuerName, "default-issuer-name", "selfsigned-issuer",
+		"Default cert-manager issuer name when not specified in the IdentityClaim spec.")
+	flag.StringVar(&defaultIssuerKind, "default-issuer-kind", "ClusterIssuer",
+		"Default cert-manager issuer kind (Issuer or ClusterIssuer).")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{
@@ -181,8 +187,10 @@ func main() {
 	}
 
 	if err := (&controller.IdentityClaimReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		DefaultIssuerName: defaultIssuerName,
+		DefaultIssuerKind: defaultIssuerKind,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "IdentityClaim")
 		os.Exit(1)

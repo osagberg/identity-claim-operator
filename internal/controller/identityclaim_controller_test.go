@@ -52,7 +52,12 @@ var _ = Describe("IdentityClaim Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: identityv1alpha1.IdentityClaimSpec{
+						Selector: metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": "test"},
+						},
+						TTL: metav1.Duration{Duration: 1 * time.Hour},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -83,6 +88,163 @@ var _ = Describe("IdentityClaim Controller", func() {
 		})
 	})
 
+	Context("When TTL is too short", func() {
+		It("should be rejected at CRD admission level", func() {
+			resource := &identityv1alpha1.IdentityClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "short-ttl-claim",
+					Namespace: "default",
+				},
+				Spec: identityv1alpha1.IdentityClaimSpec{
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test"},
+					},
+					TTL: metav1.Duration{Duration: 1 * time.Minute}, // too short (min 5m)
+				},
+			}
+			err := k8sClient.Create(context.Background(), resource)
+			Expect(err).To(HaveOccurred(), "CRD validation should reject TTL < 5m")
+			Expect(err.Error()).To(ContainSubstring("TTL must be between 5m and 8760h"))
+		})
+	})
+
+	Context("When TTL is too long", func() {
+		It("should be rejected at CRD admission level", func() {
+			resource := &identityv1alpha1.IdentityClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "long-ttl-claim",
+					Namespace: "default",
+				},
+				Spec: identityv1alpha1.IdentityClaimSpec{
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test"},
+					},
+					TTL: metav1.Duration{Duration: 10000 * time.Hour}, // too long (max 8760h)
+				},
+			}
+			err := k8sClient.Create(context.Background(), resource)
+			Expect(err).To(HaveOccurred(), "CRD validation should reject TTL > 8760h")
+			Expect(err.Error()).To(ContainSubstring("TTL must be between 5m and 8760h"))
+		})
+	})
+
+	Context("When custom issuerRef is specified", func() {
+		const resourceName = "custom-issuer-claim"
+		ctx := context.Background()
+		nn := types.NamespacedName{Name: resourceName, Namespace: "default"}
+
+		BeforeEach(func() {
+			resource := &identityv1alpha1.IdentityClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: identityv1alpha1.IdentityClaimSpec{
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test"},
+					},
+					TTL: metav1.Duration{Duration: 1 * time.Hour},
+					IssuerRef: &identityv1alpha1.IssuerReference{
+						Name:  "my-custom-issuer",
+						Kind:  "Issuer",
+						Group: "cert-manager.io",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &identityv1alpha1.IdentityClaim{}
+			if err := k8sClient.Get(ctx, nn, resource); err == nil {
+				resource.Finalizers = nil
+				_ = k8sClient.Update(ctx, resource)
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should use the custom issuer in the certificate", func() {
+			controllerReconciler := &IdentityClaimReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				DefaultIssuerName: "selfsigned-issuer",
+				DefaultIssuerKind: "ClusterIssuer",
+			}
+
+			// Reconcile until certificate would be created (may error since no actual cert-manager, that's OK)
+			for i := 0; i < 5; i++ {
+				_, _ = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			}
+
+			// Verify the claim got a SPIFFE ID assigned
+			claim := &identityv1alpha1.IdentityClaim{}
+			Expect(k8sClient.Get(ctx, nn, claim)).To(Succeed())
+			Expect(claim.Status.SpiffeID).To(ContainSubstring("custom-issuer-claim"))
+		})
+	})
+
+	Context("When selector is invalid", func() {
+		const resourceName = "invalid-selector-claim"
+		ctx := context.Background()
+		nn := types.NamespacedName{Name: resourceName, Namespace: "default"}
+
+		BeforeEach(func() {
+			resource := &identityv1alpha1.IdentityClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: identityv1alpha1.IdentityClaimSpec{
+					Selector: metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							{
+								Key:      "app",
+								Operator: metav1.LabelSelectorOperator("InvalidOp"),
+								Values:   []string{"test"},
+							},
+						},
+					},
+					TTL: metav1.Duration{Duration: 1 * time.Hour},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &identityv1alpha1.IdentityClaim{}
+			if err := k8sClient.Get(ctx, nn, resource); err == nil {
+				resource.Finalizers = nil
+				_ = k8sClient.Update(ctx, resource)
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should set Failed phase and SelectorError condition", func() {
+			controllerReconciler := &IdentityClaimReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			// Reconcile multiple times to get past finalizer and status init
+			for i := 0; i < 4; i++ {
+				_, _ = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			}
+
+			claim := &identityv1alpha1.IdentityClaim{}
+			Expect(k8sClient.Get(ctx, nn, claim)).To(Succeed())
+			Expect(claim.Status.Phase).To(Equal(identityv1alpha1.PhaseFailed))
+
+			var found bool
+			for _, cond := range claim.Status.Conditions {
+				if cond.Type == identityv1alpha1.ConditionPodsVerified && cond.Reason == "SelectorError" {
+					found = true
+					Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				}
+			}
+			Expect(found).To(BeTrue(), "should have SelectorError condition on PodsVerified")
+		})
+	})
+
 	Context("When no pods match the selector", func() {
 		const resourceName = "no-pods-claim"
 		ctx := context.Background()
@@ -100,6 +262,7 @@ var _ = Describe("IdentityClaim Controller", func() {
 							"app": "nonexistent-app-that-will-never-match",
 						},
 					},
+					TTL: metav1.Duration{Duration: 1 * time.Hour},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())

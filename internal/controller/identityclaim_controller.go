@@ -41,10 +41,17 @@ const (
 	trustDomain   = "cluster.local"
 )
 
+const (
+	minTTL = 5 * time.Minute
+	maxTTL = 8760 * time.Hour // 1 year
+)
+
 // IdentityClaimReconciler reconciles a IdentityClaim object
 type IdentityClaimReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme            *runtime.Scheme
+	DefaultIssuerName string
+	DefaultIssuerKind string
 }
 
 // +kubebuilder:rbac:groups=identity.cluster.local,resources=identityclaims,verbs=get;list;watch;create;update;patch;delete
@@ -52,7 +59,6 @@ type IdentityClaimReconciler struct {
 // +kubebuilder:rbac:groups=identity.cluster.local,resources=identityclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile implements the reconciliation loop for IdentityClaim resources
 func (r *IdentityClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -93,10 +99,33 @@ func (r *IdentityClaimReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// Validate TTL
+	ttl := claim.Spec.TTL.Duration
+	if ttl == 0 {
+		ttl = time.Hour
+	}
+	if ttl < minTTL || ttl > maxTTL {
+		claim.Status.Phase = identityv1alpha1.PhaseFailed
+		r.setCondition(claim, identityv1alpha1.ConditionReady, metav1.ConditionFalse,
+			"InvalidTTL", fmt.Sprintf("TTL must be between %s and %s, got %s", minTTL, maxTTL, ttl))
+		if err := r.Status().Update(ctx, claim); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	// Verify pods matching selector exist
 	podsFound, err := r.verifyMatchingPods(ctx, claim)
 	if err != nil {
-		return ctrl.Result{}, err
+		claim.Status.Phase = identityv1alpha1.PhaseFailed
+		r.setCondition(claim, identityv1alpha1.ConditionPodsVerified, metav1.ConditionFalse,
+			"SelectorError", err.Error())
+		if updateErr := r.Status().Update(ctx, claim); updateErr != nil {
+			log.Error(updateErr, "failed to update status after selector error")
+		}
+		// Return nil error — this is a permanent spec error, not a transient failure.
+		// Retrying won't fix an invalid selector; the user must update the spec.
+		return ctrl.Result{}, nil
 	}
 	if podsFound == 0 {
 		r.setCondition(claim, identityv1alpha1.ConditionPodsVerified, metav1.ConditionFalse, "NoPods",
@@ -258,11 +287,7 @@ func (r *IdentityClaimReconciler) reconcileCertificate(ctx context.Context, clai
 			RenewBefore: &metav1.Duration{Duration: duration / 3},
 			URIs:        []string{claim.Status.SpiffeID},
 			CommonName:  claim.Name,
-			IssuerRef: cmmeta.ObjectReference{
-				Name:  "selfsigned-issuer",
-				Kind:  "ClusterIssuer",
-				Group: "cert-manager.io",
-			},
+			IssuerRef:   r.resolveIssuerRef(claim),
 			PrivateKey: &certmanagerv1.CertificatePrivateKey{
 				Algorithm: certmanagerv1.ECDSAKeyAlgorithm,
 				Size:      256,
@@ -272,6 +297,39 @@ func (r *IdentityClaimReconciler) reconcileCertificate(ctx context.Context, clai
 	})
 
 	return err
+}
+
+// resolveIssuerRef returns the issuer reference for the certificate, using
+// the claim's spec.issuerRef if set, otherwise falling back to defaults.
+func (r *IdentityClaimReconciler) resolveIssuerRef(claim *identityv1alpha1.IdentityClaim) cmmeta.ObjectReference {
+	if claim.Spec.IssuerRef != nil {
+		ref := cmmeta.ObjectReference{
+			Name: claim.Spec.IssuerRef.Name,
+			Kind: claim.Spec.IssuerRef.Kind,
+		}
+		if claim.Spec.IssuerRef.Group != "" {
+			ref.Group = claim.Spec.IssuerRef.Group
+		} else {
+			ref.Group = "cert-manager.io"
+		}
+		if ref.Kind == "" {
+			ref.Kind = "ClusterIssuer"
+		}
+		return ref
+	}
+	name := r.DefaultIssuerName
+	if name == "" {
+		name = "selfsigned-issuer"
+	}
+	kind := r.DefaultIssuerKind
+	if kind == "" {
+		kind = "ClusterIssuer"
+	}
+	return cmmeta.ObjectReference{
+		Name:  name,
+		Kind:  kind,
+		Group: "cert-manager.io",
+	}
 }
 
 // setCondition updates or adds a condition to the claim

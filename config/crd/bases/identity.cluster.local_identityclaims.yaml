@@ -59,6 +59,23 @@ spec:
           spec:
             description: spec defines the desired state of IdentityClaim
             properties:
+              issuerRef:
+                description: issuerRef overrides the default certificate issuer.
+                properties:
+                  group:
+                    default: cert-manager.io
+                    description: group of the issuer.
+                    type: string
+                  kind:
+                    default: ClusterIssuer
+                    description: kind of the issuer (Issuer or ClusterIssuer).
+                    type: string
+                  name:
+                    description: name of the issuer resource.
+                    type: string
+                required:
+                - name
+                type: object
               selector:
                 description: |-
                   selector specifies which pods should receive the identity.
@@ -111,8 +128,12 @@ spec:
                 default: 1h
                 description: |-
                   ttl specifies how long the certificate should be valid.
-                  Defaults to 1h if not specified.
+                  Defaults to 1h if not specified. Must be between 5m and 8760h.
+                format: duration
                 type: string
+                x-kubernetes-validations:
+                - message: TTL must be between 5m and 8760h
+                  rule: duration(self) >= duration('5m') && duration(self) <= duration('8760h')
             required:
             - selector
             type: object
